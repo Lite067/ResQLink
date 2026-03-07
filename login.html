@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResQLink - Login</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <style>
+        /* Splash overlay specifically for this page */
+        #splash-overlay {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle at center, #2563eb 0%, #1e3a8a 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            color: white;
+            transition: opacity 1.2s ease-out, visibility 1.2s;
+        }
+        #splash-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        /* Professional Cinematic Splash Sequence */
+        @keyframes splashSequence {
+            0% {
+                transform: scale(0.2);
+                opacity: 0;
+                filter: blur(10px);
+            }
+            15% {
+                transform: scale(1.1);
+                opacity: 1;
+                filter: blur(0px);
+            }
+            65% {
+                transform: scale(1.15);
+                opacity: 1;
+                filter: blur(0px);
+            }
+            100% {
+                /* Slower, more deliberate zoom-in exit */
+                transform: scale(6);
+                opacity: 0;
+                filter: blur(20px) brightness(200%);
+            }
+        }
+
+        @keyframes quoteSequence {
+            0%, 20% {
+                opacity: 0;
+                transform: translateY(20px);
+                filter: blur(0px);
+            }
+            35%, 65% {
+                opacity: 1;
+                transform: translateY(0);
+                filter: blur(0px); /* Explicitly set to none to ensure sharpness */
+            }
+            100% {
+                opacity: 0;
+                transform: scale(2);
+                filter: blur(10px);
+            }
+        }
+
+        .splash-logo-anim {
+            font-size: 5rem !important;
+            font-weight: 800;
+            letter-spacing: -0.05em;
+            margin: 0;
+            /* Total duration increased for a premium feel */
+            animation: splashSequence 4.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        .splash-quote-anim {
+            margin-top: 20px;
+            font-size: 1.25rem;
+            font-weight: 500;
+            font-style: italic;
+            animation: quoteSequence 4.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+    </style>
+</head>
+<body>
+    <!-- Splash Screen shown before Login -->
+    <div id="splash-overlay">
+        <h1 class="splash-logo-anim">ResQLink</h1>
+        <div class="splash-quote-anim">
+            "Empowering safety, one step at a time."
+        </div>
+    </div>
+
+    <div class="auth-container animate-fade-up">
+        <h1 class="logo-small animate-bounce">ResQLink</h1>
+        <h2 id="auth-title">Login to your account</h2>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="login-email">Email Address</label>
+                <input type="email" id="login-email" placeholder="Enter your email" required>
+            </div>
+            <div class="form-group">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" placeholder="Enter your password" required>
+            </div>
+            <button type="submit" class="primary-btn">Login</button>
+        </form>
+
+        <p id="auth-message" role="alert" style="color: var(--error); margin-top: 15px; text-align: center; font-weight: 600;"></p>
+
+        <p style="text-align:center; margin-top:20px; color: var(--text-muted);">
+            Don't have an account? <a href="register.html" style="color: var(--primary); font-weight: 700;">Register here</a>
+        </p>
+    </div>
+
+    <script>
+        // Handle Splash Screen sequence
+        window.addEventListener('load', () => {
+            // Synchronized with the 4.5s animation
+            setTimeout(() => {
+                document.getElementById('splash-overlay').classList.add('hidden');
+            }, 3800); // Begin overlay fade slightly before the final zoom completes
+        });
+
+        const loginForm = document.getElementById('login-form');
+        const authMessage = document.getElementById('auth-message');
+
+        loginForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            authMessage.innerText = "Logging in...";
+            authMessage.style.color = "var(--primary)";
+
+            try {
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                const uid = userCredential.user.uid;
+
+                // Check role in RTDB to redirect
+                rtdb.ref('profiles/' + uid).once('value').then((snapshot) => {
+                    const profile = snapshot.val();
+                    if (profile) {
+                        if (profile.role === 'user') {
+                            speak("Logged in successfully.");
+                            window.location.href = 'user-dashboard.html';
+                        } else {
+                            window.location.href = 'guardian-dashboard.html';
+                        }
+                    } else {
+                        authMessage.innerText = "Profile not found. Please register.";
+                        authMessage.style.color = "var(--error)";
+                    }
+                });
+            } catch (error) {
+                authMessage.innerText = error.message;
+                authMessage.style.color = "var(--error)";
+            }
+        };
+    </script>
+</body>
+</html>

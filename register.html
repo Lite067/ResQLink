@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResQLink - Register</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+<body>
+    <div class="auth-container">
+        <h1 class="logo-small">ResQLink</h1>
+        <h2 id="auth-title">Register</h2>
+
+        <form id="register-form">
+            <div class="form-group">
+                <label for="auth-role">I am a:</label>
+                <select id="auth-role">
+                    <option value="user">User (Visually Impaired)</option>
+                    <option value="guardian">Guardian</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <input type="text" id="auth-name" placeholder="Full Name" required>
+            </div>
+            <div class="form-group">
+                <input type="email" id="auth-email" placeholder="Email Address" required>
+            </div>
+            <div class="form-group">
+                <input type="password" id="auth-password" placeholder="Password (Min 6 chars)" required minlength="6">
+            </div>
+            <div class="form-group">
+                <input type="email" id="auth-guardian-email" placeholder="Guardian's Email Address" required>
+            </div>
+            <button type="submit" class="primary-btn">Register</button>
+        </form>
+
+        <p id="auth-message" role="alert"></p>
+        <p style="text-align:center; margin-top:15px;">
+            Already have an account? <a href="login.html">Login here</a>
+        </p>
+    </div>
+
+    <script>
+        const registerForm = document.getElementById('register-form');
+        const authMessage = document.getElementById('auth-message');
+        const authRole = document.getElementById('auth-role');
+        const authGuardianEmailInput = document.getElementById('auth-guardian-email');
+
+        authRole.onchange = () => {
+            if (authRole.value === 'user') {
+                authGuardianEmailInput.style.display = 'block';
+                authGuardianEmailInput.required = true;
+            } else {
+                authGuardianEmailInput.style.display = 'none';
+                authGuardianEmailInput.required = false;
+            }
+        };
+
+        registerForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
+            const role = authRole.value;
+            const name = document.getElementById('auth-name').value;
+            const guardianEmail = authGuardianEmailInput.value;
+
+            authMessage.innerText = "Creating account...";
+
+            try {
+                // 1. If registering as user, validate guardian exists in database
+                if (role === 'user') {
+                    // Search in RTDB for a guardian profile with matching email
+                    const guardianSnapshot = await rtdb.ref('profiles').orderByChild('email').equalTo(guardianEmail).once('value');
+
+                    let guardianFound = false;
+                    guardianSnapshot.forEach(childSnapshot => {
+                        const profile = childSnapshot.val();
+                        if (profile.role === 'guardian') guardianFound = true;
+                    });
+
+                    if (!guardianFound) {
+                        authMessage.innerText = "Error: Guardian with this email is not registered yet.";
+                        speak("Guardian not registered.");
+                        return;
+                    }
+                }
+
+                // 2. Create Auth User
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const uid = userCredential.user.uid;
+
+                // 3. Store profile in RTDB
+                const userData = {
+                    uid,
+                    name,
+                    email,
+                    role,
+                    createdAt: new Date().toISOString()
+                };
+
+                if (role === 'user') {
+                    userData.guardianEmail = guardianEmail;
+                }
+
+                await rtdb.ref('profiles/' + uid).set(userData);
+
+                authMessage.innerText = "Registration complete! Logging you in...";
+                speak("Registration successful.");
+
+                // Redirect will happen after RTDB write
+                if (role === 'user') {
+                    window.location.href = 'user-dashboard.html';
+                } else {
+                    window.location.href = 'guardian-dashboard.html';
+                }
+            } catch (error) {
+                authMessage.innerText = "Error: " + error.message;
+                speak(error.message);
+            }
+        };
+    </script>
+</body>
+</html>

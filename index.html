@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResQLink - Initializing</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <style>
+        body { background: #2563eb; margin: 0; } /* Matches splash color for a split-second transition */
+    </style>
+</head>
+<body>
+    <script>
+        // Silent Router: Checks session and redirects immediately
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // Check role in RTDB to redirect to correct dashboard
+                rtdb.ref('profiles/' + user.uid).once('value').then((snapshot) => {
+                    const profile = snapshot.val();
+                    if (profile) {
+                        if (profile.role === 'user') {
+                            speak("Logged in successfully.");
+                            window.location.href = 'user-dashboard.html';
+                        } else {
+                            window.location.href = 'guardian-dashboard.html';
+                        }
+                    } else {
+                        window.location.href = 'login.html';
+                    }
+                }).catch(() => {
+                    window.location.href = 'login.html';
+                });
+            } else {
+                // Not logged in -> Go to login page where the splash screen is
+                window.location.href = 'login.html';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResQLink - Guardian Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+<body>
+    <div id="guardian-dashboard" class="screen active">
+        <header>
+            <h1>Guardian Panel</h1>
+            <div class="header-actions">
+                <button id="btn-profile" class="icon-btn" aria-label="View Profile">👤</button>
+                <button id="btn-alerts-history" class="icon-btn" aria-label="View Alert History">🔔</button>
+                <button class="logout-btn" id="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <div id="notification-banner" style="display:none; background: var(--warning); padding: 10px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; text-align: center;">
+            Enable notifications for instant SOS alerts.
+            <button onclick="requestNotificationPermission()" style="text-decoration: underline; background:none; border:none; font-weight:bold; cursor:pointer;">Allow</button>
+        </div>
+
+        <main>
+            <section id="active-alerts">
+                <h2>Live SOS Alerts</h2>
+                <div id="alerts-list">
+                    <p class="empty-msg">No active alerts currently.</p>
+                </div>
+            </section>
+
+            <section class="info-card">
+                <h3>Linked Users</h3>
+                <div id="monitored-users-list">
+                    <div class="skeleton" style="height: 40px; margin-bottom: 10px;"></div>
+                    <div class="skeleton" style="height: 40px;"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- SOS Audio Alert -->
+    <audio id="sos-siren" src="https://www.soundjay.com/buttons/sounds/beep-01a.mp3" preload="auto"></audio>
+
+    <!-- Profile Modal -->
+    <div id="profile-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <h2>Guardian Profile</h2>
+                <span id="close-profile" class="close-modal">&times;</span>
+            </div>
+            <div id="profile-details" class="info-card">
+                <p><strong>Name:</strong> <span id="guardian-display-name">...</span></p>
+                <p><strong>Email:</strong> <span id="guardian-display-email">...</span></p>
+            </div>
+            <button class="primary-btn" onclick="document.getElementById('profile-modal').style.display='none'">Done</button>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div id="history-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Alert Logs</h2>
+                <span id="close-history" class="close-modal">&times;</span>
+            </div>
+            <ul id="history-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        let currentUserData = null;
+        let lastAlertId = null;
+
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+
+        async function requestNotificationPermission() {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                document.getElementById('notification-banner').style.display = 'none';
+            }
+        }
+
+        if (Notification.permission !== 'granted') {
+            document.getElementById('notification-banner').style.display = 'block';
+        }
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                rtdb.ref('profiles/' + user.uid).once('value').then(snapshot => {
+                    currentUserData = snapshot.val();
+                    if (!currentUserData || currentUserData.role !== 'guardian') {
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    document.getElementById('guardian-display-name').innerText = currentUserData.name;
+                    document.getElementById('guardian-display-email').innerText = currentUserData.email;
+                    listenForAlerts();
+                    loadMonitoredUsers();
+                });
+            } else {
+                window.location.href = 'login.html';
+            }
+        });
+
+        document.getElementById('logout-btn').onclick = () => auth.signOut();
+
+        function playAlertSound() {
+            const siren = document.getElementById('sos-siren');
+            siren.play().catch(e => console.log("Audio play blocked by browser. User interaction required."));
+        }
+
+        function listenForAlerts() {
+            const alertsRef = rtdb.ref('alerts');
+            alertsRef.on('value', (snapshot) => {
+                const alertsList = document.getElementById('alerts-list');
+                const data = snapshot.val();
+
+                if (!data) {
+                    alertsList.innerHTML = "<p class='empty-msg'>No active alerts currently.</p>";
+                    return;
+                }
+
+                const filtered = Object.entries(data)
+                    .map(([id, val]) => ({ id, ...val }))
+                    .filter(a => a.guardianEmail === currentUserData.email);
+
+                if (filtered.length === 0) {
+                    alertsList.innerHTML = "<p class='empty-msg'>No active alerts currently.</p>";
+                    return;
+                }
+
+                filtered.sort((a,b) => b.timestamp - a.timestamp);
+
+                // Check for NEW alert to trigger siren
+                const latestAlert = filtered[0];
+                if (lastAlertId && latestAlert.id !== lastAlertId) {
+                    playAlertSound();
+                    if (Notification.permission === "granted") {
+                        new Notification("🚨 EMERGENCY SOS", {
+                            body: `Distress alert from ${latestAlert.name}!`,
+                            icon: 'https://cdn-icons-png.flaticon.com/512/1067/1067555.png'
+                        });
+                    }
+                }
+                lastAlertId = latestAlert.id;
+
+                alertsList.innerHTML = "";
+                filtered.forEach(alert => {
+                    const div = document.createElement('div');
+                    div.className = "alert-item";
+                    const time = new Date(alert.timestamp).toLocaleTimeString();
+
+                    div.innerHTML = `
+                        <p><strong>🚨 SOS: ${alert.name}</strong></p>
+                        <p style="margin-top:4px; font-size:0.9rem;">Received at: ${time}</p>
+                        <p style="font-size:0.9rem;">Coordinates: ${alert.lat.toFixed(5)}, ${alert.lon.toFixed(5)}</p>
+                        <a href="https://www.google.com/maps?q=${alert.lat},${alert.lon}" target="_blank">Open Map Location</a>
+                    `;
+                    alertsList.appendChild(div);
+                });
+            });
+        }
+
+        async function loadMonitoredUsers() {
+            rtdb.ref('profiles').orderByChild('guardianEmail').equalTo(currentUserData.email).on('value', (snapshot) => {
+                const list = document.getElementById('monitored-users-list');
+                const users = snapshot.val();
+                list.innerHTML = "";
+
+                if (!users) {
+                    list.innerHTML = "<p class='empty-msg'>You are not monitoring any users yet.</p>";
+                    return;
+                }
+
+                Object.values(users).forEach(user => {
+                    const p = document.createElement('p');
+                    p.style.padding = "12px 0";
+                    p.style.borderBottom = "1px solid var(--border)";
+                    p.innerHTML = `<strong>👤 ${user.name}</strong> (${user.email})`;
+                    list.appendChild(p);
+                });
+            });
+        }
+
+        function loadHistory() {
+            rtdb.ref('alerts').once('value').then(snapshot => {
+                const list = document.getElementById('history-list');
+                const data = snapshot.val();
+                list.innerHTML = "";
+
+                if (!data) {
+                    list.innerHTML = "<p class='empty-msg'>No history found.</p>";
+                    return;
+                }
+
+                const filtered = Object.values(data).filter(a => a.guardianEmail === currentUserData.email);
+                filtered.sort((a,b) => b.timestamp - a.timestamp);
+
+                filtered.forEach(alert => {
+                    const li = document.createElement('li');
+                    const time = new Date(alert.timestamp).toLocaleString();
+                    li.innerHTML = `<strong>${alert.name}</strong> - ${time}`;
+                    list.appendChild(li);
+                });
+            });
+        }
+
+        const profileModal = document.getElementById('profile-modal');
+        const historyModal = document.getElementById('history-modal');
+
+        document.getElementById('btn-profile').onclick = () => profileModal.style.display = 'flex';
+        document.getElementById('close-profile').onclick = () => profileModal.style.display = 'none';
+
+        document.getElementById('btn-alerts-history').onclick = () => {
+            historyModal.style.display = 'flex';
+            loadHistory();
+        };
+        document.getElementById('close-history').onclick = () => historyModal.style.display = 'none';
+
+        window.onclick = (e) => {
+            if (e.target == profileModal) profileModal.style.display = 'none';
+            if (e.target == historyModal) historyModal.style.display = 'none';
+        };
+    </script>
+</body>
+</html>

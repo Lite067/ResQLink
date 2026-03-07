@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResQLink - User Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+<body>
+    <div id="user-dashboard" class="screen active">
+        <header>
+            <h1>ResQLink</h1>
+            <div class="header-actions">
+                <button id="btn-profile" class="icon-btn" aria-label="View Profile">👤</button>
+                <button class="logout-btn" id="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <main>
+            <section class="status-panel">
+                <div id="ble-status" class="status-indicator disconnected">
+                    Stick: Not Connected
+                </div>
+                <div id="connected-device-name" style="font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; display: none;">
+                    Device: <span id="device-name-val"></span>
+                </div>
+                <button id="btn-connect-ble" class="secondary-btn">Pair Smart Cane</button>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 10px;">
+                    Make sure Bluetooth is ON and Cane is near.
+                </p>
+            </section>
+
+            <section class="sos-panel">
+                <button id="btn-sos" class="sos-btn">SOS</button>
+                <p id="sos-status">Ready to assist</p>
+            </section>
+        </main>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profile-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>My Profile</h2>
+                <span id="close-profile" class="close-modal">&times;</span>
+            </div>
+            <div id="profile-details" class="info-card">
+                <div id="profile-loader">
+                    <div class="skeleton" style="margin-bottom: 10px;"></div>
+                    <div class="skeleton" style="margin-bottom: 10px; width: 80%;"></div>
+                    <div class="skeleton" style="width: 60%;"></div>
+                </div>
+                <div id="profile-content" style="display: none;">
+                    <p><strong>Name:</strong> <span id="user-display-name"></span></p>
+                    <p><strong>Email:</strong> <span id="user-display-email"></span></p>
+                    <p><strong>Guardian:</strong> <span id="user-display-guardian"></span></p>
+                </div>
+            </div>
+            <button class="primary-btn" onclick="vibrate(50); document.getElementById('profile-modal').style.display='none'">Done</button>
+        </div>
+    </div>
+
+    <script>
+        let currentUserData = null;
+        let bleDevice;
+        let sosCharacteristic;
+        let lastKnownPosition = null;
+
+        function vibrate(pattern = [100]) {
+            if ("vibrate" in navigator) {
+                navigator.vibrate(pattern);
+            }
+        }
+
+        // Request location permission ONCE and keep watching for updates
+        function startLocationTracking() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(
+                    (position) => {
+                        lastKnownPosition = position;
+                        console.log("Location updated");
+                        document.getElementById('sos-status').innerText = "Location active. Ready to assist.";
+                    },
+                    (error) => {
+                        console.error("Location error:", error);
+                        document.getElementById('sos-status').innerText = "Location error. Enable GPS.";
+                        if (error.code === error.PERMISSION_DENIED) {
+                            speak("Please allow location access for your safety.");
+                        }
+                    },
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+            }
+        }
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                rtdb.ref('profiles/' + user.uid).once('value').then(snapshot => {
+                    currentUserData = snapshot.val();
+                    if (!currentUserData || currentUserData.role !== 'user') {
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    document.getElementById('user-display-name').innerText = currentUserData.name;
+                    document.getElementById('user-display-email').innerText = currentUserData.email;
+                    document.getElementById('user-display-guardian').innerText = currentUserData.guardianEmail;
+                    document.getElementById('profile-loader').style.display = 'none';
+                    document.getElementById('profile-content').style.display = 'block';
+
+                    // Start tracking immediately after login (asks only once)
+                    startLocationTracking();
+                });
+            } else {
+                window.location.href = 'login.html';
+            }
+        });
+
+        document.getElementById('logout-btn').onclick = () => { vibrate(50); auth.signOut(); };
+
+        const profileModal = document.getElementById('profile-modal');
+        document.getElementById('btn-profile').onclick = () => { vibrate(50); profileModal.style.display = 'flex'; };
+        document.getElementById('close-profile').onclick = () => { vibrate(50); profileModal.style.display = 'none'; };
+
+        // BLE Connectivity
+        document.getElementById('btn-connect-ble').onclick = async () => {
+            vibrate(50);
+            if (!navigator.bluetooth) {
+                alert("Web Bluetooth is not supported. Use Chrome/Edge on Windows/Android/Mac.");
+                speak("Bluetooth not supported.");
+                return;
+            }
+
+            try {
+                speak("Scanning for your smart cane. Please select it from the list.");
+
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b']
+                });
+
+                const statusIndicator = document.getElementById('ble-status');
+                statusIndicator.innerText = "Stick: Connecting...";
+
+                const server = await bleDevice.gatt.connect();
+                const service = await server.getPrimaryService('4fafc201-1fb5-459e-8fcc-c5c9c331914b');
+                sosCharacteristic = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26a8');
+
+                await sosCharacteristic.startNotifications();
+                sosCharacteristic.addEventListener('characteristicvaluechanged', (e) => {
+                    const val = new TextDecoder().decode(e.target.value);
+                    console.log("BLE Signal Received:", val);
+                    if (val === "1" || val === "SOS_TRIGGERED") {
+                        triggerSOS();
+                    }
+                });
+
+                statusIndicator.innerText = "Stick: Connected";
+                statusIndicator.className = "status-indicator connected";
+
+                const deviceName = bleDevice.name || "Smart Cane";
+                document.getElementById('device-name-val').innerText = deviceName;
+                document.getElementById('connected-device-name').style.display = "block";
+
+                vibrate([100, 50, 100]);
+                speak("Stick connected: " + deviceName);
+
+                bleDevice.addEventListener('gattserverdisconnected', () => {
+                    statusIndicator.innerText = "Stick: Disconnected";
+                    statusIndicator.className = "status-indicator disconnected";
+                    document.getElementById('connected-device-name').style.display = "none";
+                    speak("Stick disconnected.");
+                });
+
+            } catch (err) {
+                console.error("BLE Error:", err);
+                if (err.name === 'NotFoundError') {
+                    speak("No device selected.");
+                } else {
+                    speak("Connection failed.");
+                }
+            }
+        };
+
+        // SOS Logic - Uses the continuously tracked location for instant response
+        async function triggerSOS() {
+            vibrate([500, 200, 500, 200, 500]);
+
+            const statusEl = document.getElementById('sos-status');
+            statusEl.innerText = "Triggering SOS...";
+            speak("Emergency alert triggered.");
+
+            if (!lastKnownPosition) {
+                statusEl.innerText = "Waiting for GPS...";
+                // Fallback: try one quick check if tracking hasn't yielded a result yet
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        lastKnownPosition = pos;
+                        sendSOSData();
+                    },
+                    (err) => {
+                        statusEl.innerText = "Location error. SOS failed.";
+                        speak("Location error. SOS failed.");
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            } else {
+                sendSOSData();
+            }
+        }
+
+        async function sendSOSData() {
+            const { latitude, longitude } = lastKnownPosition.coords;
+            const alertData = {
+                uid: currentUserData.uid,
+                name: currentUserData.name,
+                guardianEmail: currentUserData.guardianEmail,
+                lat: latitude,
+                lon: longitude,
+                timestamp: Date.now()
+            };
+
+            try {
+                await rtdb.ref('alerts').push(alertData);
+                document.getElementById('sos-status').innerText = "SOS Sent! Help notified.";
+                speak("SOS sent. Guardian notified.");
+            } catch (err) {
+                document.getElementById('sos-status').innerText = "Failed to send SOS";
+            }
+        }
+
+        document.getElementById('btn-sos').onclick = triggerSOS;
+
+        window.onclick = (e) => {
+            if (e.target == profileModal) profileModal.style.display = 'none';
+        };
+    </script>
+</body>
+</html>
