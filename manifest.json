@@ -1,17 +1,22 @@
 {
-  "name": "ResQLink Safety App",
+  "name": "ResQLink",
   "short_name": "ResQLink",
+  "description": "Emergency SOS and safety app for visually impaired users.",
   "start_url": "/index.html",
-  "display": "fullscreen",
-  "orientation": "portrait",
+  "display": "standalone",
   "background_color": "#020617",
-  "theme_color": "#020617",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/1067/1067555.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1067/1067555.png",
+      "sizes": "192x192",
+      "type": "image/png"
     }
   ]
 }
