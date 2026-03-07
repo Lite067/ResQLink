@@ -6,13 +6,22 @@ self.addEventListener('activate', (e) => {
   return self.clients.claim();
 });
 
+// fetch event listener is REQUIRED for the "Install app" prompt to appear
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    fetch(event.request).catch(() => {
+      return caches.match(event.request);
+    })
+  );
+});
+
 self.addEventListener('push', (event) => {
   const data = event.data ? event.json() : { title: 'ResQLink SOS', body: 'Emergency Alert!' };
 
   const options = {
     body: data.body,
-    icon: 'https://cdn-icons-png.flaticon.com/512/1067/1067555.png',
-    badge: 'https://cdn-icons-png.flaticon.com/512/1067/1067555.png',
+    icon: 'logo.png',
+    badge: 'logo.png',
     vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40],
     data: { url: '/guardian-dashboard.html' },
     actions: [
