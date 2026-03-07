@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ResQLink - Initializing</title>
+    <link rel="manifest" href="manifest.json">
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -15,6 +16,15 @@
 </head>
 <body>
     <script>
+        // Register Service Worker for PWA (Required for "Install" prompt)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('SW Registered'))
+                    .catch(err => console.log('SW Failed', err));
+            });
+        }
+
         // Silent Router: Checks session and redirects immediately
         auth.onAuthStateChanged(user => {
             if (user) {
