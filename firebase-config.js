@@ -1,14 +1,16 @@
 // Firebase Configuration
+
 const firebaseConfig = {
-  apiKey: "AIzaSyAQU7n-P6lirLhXhyLuOm9JL-dnIf-j-2U",
-  authDomain: "resqlink-73b57.firebaseapp.com",
-  databaseURL: "https://resqlink-73b57-default-rtdb.firebaseio.com",
-  projectId: "resqlink-73b57",
-  storageBucket: "resqlink-73b57.firebasestorage.app",
-  messagingSenderId: "1089979527311",
-  appId: "1:1089979527311:web:978de63a5d76348d7440fa",
-  measurementId: "G-JVHWVP44H4"
-};
+    apiKey: "AIzaSyAxMF9zqHOeiq5ILApkO2SFR6prbWiJ0ts",
+    authDomain: "resqlink-194aa.firebaseapp.com",
+    databaseURL: "https://resqlink-194aa-default-rtdb.firebaseio.com",
+    projectId: "resqlink-194aa",
+    storageBucket: "resqlink-194aa.firebasestorage.app",
+    messagingSenderId: "20482192786",
+    appId: "1:20482192786:web:3ca219eb156b0906d0fd4b",
+    measurementId: "G-6SW87B02WF"
+  };
+
 
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
